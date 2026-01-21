@@ -5,7 +5,6 @@ from shapely.geometry import MultiPolygon
 import geojson
 import geopandas as gpd
 import logging
-from lxml import objectify
 
 
 class QueryBoundary:
@@ -191,6 +190,7 @@ class JSONBoundaryParser(BoundaryParser):
         except Exception as e:
             self._logger.exception(e)
         return boundaries_tuples
+
 
 
 def find_bbox_from_boundaries(boundaries: [], buffer_percent: float):
