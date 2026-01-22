@@ -5,6 +5,7 @@ import string
 import requests
 from datetime import datetime, timedelta
 import pytz
+import json
 
 from dateutil.relativedelta import relativedelta
 
@@ -56,31 +57,39 @@ class xmrg_archive_utilities:
         date_time = from_date
         #Build a list of the files we should have for a given date range.
         complete_file_list = self.build_file_list_for_date_range(from_date, to_date, "")
-        complete_file_set = set(complete_file_list)
-        while date_time < to_date:
-            year = date_time.year
-            month_str = date_time.strftime("%b")
-            #Get all the files available for the given year/month
-            file_list = self.file_list(year, month_str)
-            #Get file names only
-            file_name_list = []
-            for file in file_list:
-                file_dir, file_name = os.path.split(file)
-                #We just want the name of the file with no extensions.
-                file_name, exten = os.path.splitext(file_name)
-                file_name_list.append(file_name)
-            end_date_time = date_time + relativedelta(months=1)
-            #end_date_time = date_time + relativedelta(hours=1)
+        #Divide up the file list by year and month.
+        sorted_file_list = {}
+        for file in complete_file_list:
+            file_date = datetime.strptime(get_collection_date_from_filename(file), "%Y-%m-%dT%H:00:00")
+            if file_date.year not in sorted_file_list:
+                sorted_file_list[file_date.year] = {}
+            month_str = file_date.strftime("%b")
+            if month_str not in sorted_file_list[file_date.year]:
+                sorted_file_list[file_date.year][month_str] = []
+            sorted_file_list[file_date.year][month_str].append(file)
+        for year in sorted_file_list:
+            for month_str in sorted_file_list[year]:
+                #Get all the files available for the given year/month
+                file_list = self.file_list(year, month_str)
+                #Get file names only
+                file_name_list = []
+                for file in file_list:
+                    file_dir, file_name = os.path.split(file)
+                    #We just want the name of the file with no extensions.
+                    file_name, exten = os.path.splitext(file_name)
+                    file_name_list.append(file_name)
 
-            archive_file_set = set(file_name_list)
-            missing_files = complete_file_set.difference(archive_file_set)
-            if len(missing_files):
-                if year not in results:
-                    results[year] = {}
-                if month_str not in results[year]:
-                    results[year][month_str] = []
-                results[year][month_str].extend(list(missing_files))
-            date_time = end_date_time
+                #Create a set from the file list we have in the archive, a set from the files we expect
+                #then we can use the difference function to find out what is not in the archive.
+                archive_file_set = set(file_name_list)
+                expected_file_list = set(sorted_file_list[year][month_str])
+                missing_files = expected_file_list.difference(archive_file_set)
+                if len(missing_files):
+                    if year not in results:
+                        results[year] = {}
+                    if month_str not in results[year]:
+                        results[year][month_str] = []
+                    results[year][month_str].extend(list(missing_files))
         return results
 
     def download_files(self, base_url: str, file_list: [], delete_if_exists: bool):
@@ -130,14 +139,24 @@ class xmrg_archive_utilities:
 
     def check_file_timestamps(self, base_url, from_date, to_date, repository_data_duration_hours):
         #Get a list of the files we have.
-        date_time = from_date
         #We do not need to check the remote repository for any times older than this one.
         oldest_date_at_repository = datetime.now() - timedelta(hours=repository_data_duration_hours)
         local_tz = pytz.timezone('America/New_York')
         gmt_tz = pytz.timezone('GMT')
         self._logger.info(f"Checking updated files for {from_date.strftime('%Y-%m-%d %H:%M:%S')}"
                           f" to {to_date.strftime('%Y-%m-%d %H:%M:%S')}")
-        while date_time < to_date:
+        # Get a list of the months between the 2 dates. The data in the archive is stored in a \Year\Month
+        # directory structure
+        year_months = []
+        # Set both dates to the first day of their respective months
+        start_date = datetime(from_date.year, from_date.month, 1)
+        end_date = datetime(to_date.year, to_date.month, 1)
+        date_time = start_date
+        while date_time <= end_date:
+            year_months.append(date_time)
+            date_time += relativedelta(months=1)
+
+        for date_time in year_months:
             year = date_time.year
             month_abbreviation = date_time.strftime("%b")
             current_file_list = self.file_list(year, month_abbreviation)
@@ -147,13 +166,14 @@ class xmrg_archive_utilities:
                 current_file_datetime = datetime.strptime(get_collection_date_from_filename(file_name), "%Y-%m-%dT%H:00:00")
                 if current_file_datetime > oldest_date_at_repository:
                     mtime = os.path.getmtime(current_file)
-                    local_mod_time = datetime.fromtimestamp(mtime, local_tz)
+                    local_mod_time = datetime.fromtimestamp(mtime, gmt_tz)
                     try:
                         directory, file_name = os.path.split(current_file)
                         file_name, file_ext = os.path.splitext(file_name)
                         remote_file_name = f"{file_name}.gz"
                         remote_filename_url = os.path.join(base_url, remote_file_name)
                         remote_file_info = requests.head(remote_filename_url)
+                        self._logger.info(f"Retrieving info for remote file: {remote_file_name}")
                         if remote_file_info.status_code == 200:
                             remote_file_info.raise_for_status()  # Raise an exception if the request fails
                             header_param = None
@@ -166,9 +186,9 @@ class xmrg_archive_utilities:
                             if remote_timestamp > local_mod_time:
                                 files_to_download.append(file_name)
                                 self._logger.info(f"Remote file: {remote_file_name} "
-                                                  f"{local_mod_time.strftime('%Y-%m-%d %H:%M:%S')} more recent "
-                                                  f"time stamp than remote file: "
-                                                  f"{remote_timestamp.strftime('%Y-%m-%d %H:%M:%S')} adding to "
+                                                  f"{remote_timestamp.strftime('%Y-%m-%d %H:%M:%S')} more recent "
+                                                  f"time stamp than local archive file: "
+                                                  f"{local_mod_time.strftime('%Y-%m-%d %H:%M:%S')} adding to "
                                                   f"re-download.")
 
                         else:
@@ -177,30 +197,61 @@ class xmrg_archive_utilities:
                     except Exception as e:
                         self._logger.exception(e)
 
-            #Now we hit the endpoint where the remote system has the files stored and check their last modified time
-            #XMRg files get periodically updated due to QAQC during the day, so we try and get the latest version.
-            end_date_time = date_time + relativedelta(months=1)
+        if len(files_to_download) > 0:
+            self.download_files(base_url, files_to_download, True)
+        self._logger.info(f"Finished checking updated files for {from_date} to {to_date}")
 
-            date_time = end_date_time
-            if len(files_to_download) > 0:
-                self.download_files(base_url, files_to_download, True)
-            self._logger.info(f"Finished checking updated files for {from_date} to {to_date}")
+    def create_archive_information(self, output_filename: str, start_date: datetime|None, end_date: datetime|None):
+        #Get a listing of the directories which should all be years.
+        year_list = os.listdir(self._parent_directory)
+        year_list.sort()
+        archive_results = {}
+        now_datetime = datetime.utcnow()
+        for year in year_list:
+            try:
+                self._logger.info(f"Creating archive information for {year}.")
+                if int(year):
+                    archive_results[year] = {}
+                    for month in range(1, 13):
+                        if int(year) == now_datetime.year and month == now_datetime.month:
+                            break
+                        else:
+                            start_search_date = datetime(year=int(year), month=month, day=1, hour=0, minute=0, second=0)
+                            end_search_date = start_search_date + relativedelta(months=1)
+                            days_in_month = (end_search_date - start_search_date).days
+                            number_of_hourly_files_in_month = days_in_month * 24
+                            #Build a list of the files we should have
+                            files_for_the_month = self.build_file_list_for_date_range(start_search_date, end_search_date, "")
+                            month_abbreviation = start_search_date.strftime("%b")
+                            archive_results[year][month_abbreviation] = {
+                                'file_count': len(files_for_the_month),
+                                'number_of_files_missing': 0,
+                                'files_missing': []
+                            }
+                            path_to_check = self._data_path_template.substitute(year=year, month=month_abbreviation)
+                            path_to_check = os.path.join(self._parent_directory, path_to_check)
+                            files_in_archive_for_month = os.listdir(path_to_check)
+                            if len(files_in_archive_for_month) != len(files_for_the_month):
+                                #We're missing files in the archive.
+                                set_for_archive = set()
+                                for archive_file in files_in_archive_for_month:
+                                    base_directory, filename = os.path.split(archive_file)
+                                    filename, file_ext = os.path.splitext(filename)
+                                    set_for_archive.add(filename)
+                                set_for_files_for_month = set(files_for_the_month)
+                                missing_archive_files = set_for_files_for_month.difference(set_for_archive)
+                                #Currently it's possible the archive folder has the ".gz" files and the uncompressed files.
+                                #So if our set difference doesn't have anything, we're not missing files.
+                                if len(missing_archive_files) > 0:
+                                    archive_results[year][month_abbreviation]['number_of_files_missing'] = (
+                                        len(missing_archive_files))
+                                    archive_results[year][month_abbreviation]['files_missing'] = (
+                                        list(missing_archive_files))
 
 
-    def get_file_location(self, filename: str):
-        '''
-        Given the filename, this will return the fullpath to it's location in the archive.
-        :param filename:
-        :return:
-        '''
-        file_datetime = datetime.strptime(get_collection_date_from_filename(filename), "%Y-%m-%dT%H:00:00")
-        month_abbreviation = file_datetime.strftime("%b")
+            except ValueError as e:
+                self._logger.exception(f"Failed to parse year: {year}. {e}")
 
-        full_filepath = self._data_path_template.substitute(year=file_datetime.year, month=month_abbreviation)
-        full_filepath = os.path.join(self._parent_directory, full_filepath)
-        full_filename = os.path.join(full_filepath, filename)
-        if os.path.exists(full_filename):
-            return full_filename
-        return None
-    def copy_file(self, filename: str, destination_directory: str):
+        with open(output_filename, "w") as output_file:
+            output_file.write(json.dumps(archive_results))
         return

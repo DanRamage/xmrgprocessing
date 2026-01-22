@@ -1,8 +1,8 @@
 import os
 import logging.config
 import time
-from boundary.boundariesparse import find_bbox_from_boundaries
-from .xmrg_multiproc_processing import xmrg_processing_geopandas
+from xmrgprocessing.boundary.boundariesparse import find_bbox_from_boundaries
+from xmrgprocessing.xmrg_multiproc_processing import xmrg_processing_geopandas
 from xmrgprocessing.xmrgfileiterator.xmrg_file_iterator import xmrg_file_iterator
 from xmrgprocessing.xmrg_results import xmrg_results
 
