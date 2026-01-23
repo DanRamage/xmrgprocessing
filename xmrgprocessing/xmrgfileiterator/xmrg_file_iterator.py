@@ -75,5 +75,3 @@ class xmrg_file_iterator:
         self._end_date = kwargs['end_date']
         self._current_iterate_date = self._start_date
 
-        pass
-
