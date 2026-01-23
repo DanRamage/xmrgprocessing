@@ -50,10 +50,10 @@ class xmrg_process:
         start_date = kwargs['start_date']
         end_date = kwargs['end_date']
         base_xmrg_directory = kwargs['base_xmrg_directory']
-
-        self._file_list_iterator.setup_iterator(start_date=start_date,
-                                                end_date=end_date,
-                                                base_xmrg_path=base_xmrg_directory)
+        if self._file_list_iterator is None:
+            self._file_list_iterator.setup_iterator(start_date=start_date,
+                                                    end_date=end_date,
+                                                    base_xmrg_path=base_xmrg_directory)
         self._logger.info(f"{self._unique_id} process started. Start date: {start_date} End date: {end_date}")
 
         self._xmrg_proc.import_files(self._file_list_iterator)
