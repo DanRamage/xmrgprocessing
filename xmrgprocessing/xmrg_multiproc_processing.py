@@ -2,10 +2,8 @@ import os
 import logging
 import threading
 from multiprocessing import Process, Queue, current_process
-from threading import Thread
 import time
-from venv import logger
-
+from pathlib import Path
 import pandas as pd
 import geopandas as gpd
 import shutil
@@ -288,6 +286,10 @@ class xmrg_processing_geopandas:
         #from an archive, so we want to copy them to a working directory.
         #If set, copy the XMRG files to this directory for processing.
         self._source_file_working_directory = kwargs.get("source_file_working_directory", None)
+        if self._source_file_working_directory is not None:
+            self._source_file_working_directory = Path(self._source_file_working_directory)
+            self._source_file_working_directory.mkdir(parents=True, exist_ok=True)
+
         #Delete the source file when it has been processed.
         self._delete_source_file = kwargs.get("delete_source_file", False)
         #Delete the compressed file after processing
@@ -295,12 +297,18 @@ class xmrg_processing_geopandas:
 
         #The directory to output the KML file we use for debugging.
         self._kml_output_directory = kwargs.get("kml_output_directory", None)
+        if self._kml_output_directory is not None:
+            self._kml_output_directory = Path(self._kml_output_directory)
+            self._kml_output_directory.mkdir(parents=True, exist_ok=True)
 
         #Callback function used when we have a result.
         self._callback_function = kwargs.get("callback_function", None)
 
         #Directory where logfiles are written.
         self._base_log_output_directory = kwargs.get("base_log_output_directory", "")
+        if self._base_log_output_directory is not None:
+            self._base_log_output_directory = Path(self._base_log_output_directory)
+            self._base_log_output_directory.mkdir(parents=True, exist_ok=True)
 
     def import_files(self, file_list_iterator):
         start_import_files_time = time.time()
