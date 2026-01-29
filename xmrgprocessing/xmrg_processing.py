@@ -279,7 +279,8 @@ class xmrg_processing_geopandas:
                         input_queue.put(file_to_process)
                 except StopIteration:
                     self.logger.info("Finished iterating files.")
-                    input_queue.put('STOP')
+                    for worker_cnt in range(workers):
+                        input_queue.put('STOP')
                 except Exception as e:
                     self.logger.exception(e)
 
@@ -290,7 +291,8 @@ class xmrg_processing_geopandas:
                     self.process_result(result_queue.get())
                     rec_count += 1
 
-        input_queue.put('STOP')
+        for worker_cnt in range(workers):
+            input_queue.put('STOP')
 
         # Poll the queue once more to get any remaining records.
         while not result_queue.empty():
