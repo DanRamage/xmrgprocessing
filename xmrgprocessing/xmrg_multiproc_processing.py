@@ -129,7 +129,8 @@ def process_xmrg_file_geopandas(**kwargs):
             write_percentages_grids_one_pass = True
 
         except Exception as e:
-            logger.exception(e)
+            logger.error(f"{process_name} {e}")
+            #logger.exception(e)
 
         else:
             # Build boundary dataframes
