@@ -360,7 +360,7 @@ class xmrg_processing_geopandas:
             while True:
                 #if not results_queue.empty():
                 if not any(p.is_alive() for p in processes):
-                    self._logger.info(f"{self._unique_id} All processes done", flush=True)
+                    self._logger.info(f"{self._unique_id} All processes done")
                     break
 
                 try:
