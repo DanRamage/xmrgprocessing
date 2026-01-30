@@ -133,6 +133,7 @@ def process_xmrg_file_geopandas(**kwargs):
 
         else:
             # Build boundary dataframes
+            logger.info(f"{process_name} begin processing boundaries.")
             boundary_frames = []
             for boundary in boundaries:
                 logger.info(f"{process_name} adding boundary {boundary[0]}")
