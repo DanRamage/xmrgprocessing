@@ -122,12 +122,12 @@ def process_xmrg_file_geopandas(**kwargs):
             logger.addHandler(ch)
 
 
-            logger.info(f"{process_name} starting process_xmrg_file_geopandas.")
-
-            sys.stdout.flush()
             save_boundary_grid_cells = True
             save_boundary_grids_one_pass = True
             write_percentages_grids_one_pass = True
+            logger.info(f"{process_name} starting process_xmrg_file_geopandas.")
+
+            sys.stdout.flush()
 
         except Exception as e:
             logger.error(f"{process_name} {e}")
@@ -248,7 +248,7 @@ def process_xmrg_file_geopandas(**kwargs):
             logger.info(f"{process_name} process finished. Processed in: "
                          f"{time.time() - processing_start_time} seconds")
     except Exception as e:
-        logger.exception(e)
+        logger.error(f"{current_process().name} {e}")
 
     return
 
