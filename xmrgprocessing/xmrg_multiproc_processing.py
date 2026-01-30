@@ -110,15 +110,15 @@ def process_xmrg_file_geopandas(**kwargs):
             logger = logging.getLogger(process_name)
             logger.setLevel(logging.DEBUG)
             formatter = logging.Formatter("%(asctime)s,%(levelname)s,%(funcName)s,%(lineno)d,%(message)s")
-            fh = logging.handlers.RotatingFileHandler(log_output_filename)
-            error_fh = logging.handlers.RotatingFileHandler(error_log_output_filename)
+            #fh = logging.handlers.RotatingFileHandler(log_output_filename)
+            #error_fh = logging.handlers.RotatingFileHandler(error_log_output_filename)
             ch = logging.StreamHandler()
-            fh.setLevel(logging.DEBUG)
-            error_fh.setLevel(logging.ERROR)
+            #fh.setLevel(logging.DEBUG)
+            #error_fh.setLevel(logging.ERROR)
             ch.setLevel(logging.DEBUG)
-            fh.setFormatter(formatter)
+            #fh.setFormatter(formatter)
             ch.setFormatter(formatter)
-            logger.addHandler(fh)
+            #logger.addHandler(fh)
             logger.addHandler(ch)
 
 
@@ -356,10 +356,15 @@ class xmrg_processing_geopandas:
                 processes.append(p)
 
             rec_count = 0
-            while any([(checkJob is not None and checkJob.is_alive()) for checkJob in processes]):
+            #while any([(checkJob is not None and checkJob.is_alive()) for checkJob in processes]):
+            while True:
                 #if not results_queue.empty():
+                if not any(p.is_alive() for p in processes):
+                    self._logger.info(f"{self._unique_id} All processes done", flush=True)
+                    break
+
                 try:
-                    self.process_result(results_queue.get(block=False))
+                    self.process_result(results_queue.get(timeout=0.5))
                     rec_count += 1
                     if (rec_count % 10) == 0:
                         self._logger.info(f"{self._unique_id} Processed {rec_count} results")
@@ -367,6 +372,8 @@ class xmrg_processing_geopandas:
                     e
                 except ValueError as e:
                     self._logger.exception(e)
+                    process_output_queue = False
+
 
         finally:
             # Wait for the process to finish.
