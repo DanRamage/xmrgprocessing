@@ -361,7 +361,9 @@ class xmrg_processing_geopandas:
                     if (rec_count % 10) == 0:
                         self._logger.info(f"{self._unique_id} Processed {rec_count} results")
                 except Empty:
-                    self._logger.info(f"Q Empty {self._unique_id} Processed {rec_count} results")
+                    if (rec_count % 50) == 0:
+                        for p in processes:
+                            self._logger.info(f"{p._name} {p .is_alive()} Q Empty.")
                 except ValueError as e:
                     self._logger.exception(e)
 
