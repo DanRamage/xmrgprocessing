@@ -127,7 +127,7 @@ def process_xmrg_file_geopandas(**kwargs):
             write_percentages_grids_one_pass = True
             logger.info(f"{process_name} starting process_xmrg_file_geopandas.")
 
-            sys.stdout.flush()
+            #sys.stdout.flush()
 
         except Exception as e:
             logger.error(f"{process_name} {e}")
