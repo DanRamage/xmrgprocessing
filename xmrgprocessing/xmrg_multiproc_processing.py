@@ -4,6 +4,8 @@ import threading
 from multiprocessing import Process, Queue, current_process
 import time
 from pathlib import Path
+from queue import Empty
+
 import pandas as pd
 import geopandas as gpd
 import shutil
@@ -352,11 +354,17 @@ class xmrg_processing_geopandas:
 
             rec_count = 0
             while any([(checkJob is not None and checkJob.is_alive()) for checkJob in processes]):
-                if not results_queue.empty():
-                    self.process_result(results_queue.get())
+                #if not results_queue.empty():
+                try:
+                    self.process_result(results_queue.get(block=False))
                     rec_count += 1
                     if (rec_count % 10) == 0:
                         self._logger.info(f"{self._unique_id} Processed {rec_count} results")
+                except Empty:
+                    self._logger.info(f"Q Empty {self._unique_id} Processed {rec_count} results")
+                except ValueError as e:
+                    self._logger.exception(e)
+
         finally:
             # Wait for the process to finish.
             self._logger.info(f"{self._unique_id} waiting for {self._worker_process_count} processes to finish.")
