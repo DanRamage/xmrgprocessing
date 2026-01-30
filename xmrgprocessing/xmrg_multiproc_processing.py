@@ -1,5 +1,6 @@
 import os
 import logging
+import sys
 import threading
 from multiprocessing import Process, Queue, current_process
 import time
@@ -123,7 +124,7 @@ def process_xmrg_file_geopandas(**kwargs):
 
             logger.info(f"{process_name} starting process_xmrg_file_geopandas.")
 
-
+            sys.stdout.flush()
             save_boundary_grid_cells = True
             save_boundary_grids_one_pass = True
             write_percentages_grids_one_pass = True
