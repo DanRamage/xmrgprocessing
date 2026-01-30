@@ -333,7 +333,7 @@ class xmrg_processing_geopandas:
             'worker_count': self._worker_process_count
         }
         file_queue_build_thread = threading.Thread(target=file_queue_builder, kwargs=thrd_args)
-        file_queue_build_thread.start()
+
         try:
             processes = []
             #Create a multiprocessing Process() for each worker.
@@ -354,6 +354,8 @@ class xmrg_processing_geopandas:
                 self._logger.info(f"{self._unique_id} Starting process: %s" % (p._name))
                 p.start()
                 processes.append(p)
+
+            file_queue_build_thread.start()
 
             rec_count = 0
             #while any([(checkJob is not None and checkJob.is_alive()) for checkJob in processes]):
