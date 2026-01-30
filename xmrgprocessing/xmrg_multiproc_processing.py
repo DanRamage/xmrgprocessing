@@ -376,11 +376,15 @@ class xmrg_processing_geopandas:
             self._logger.info(f"{self._unique_id} waiting for {self._worker_process_count} processes to finish.")
             for p in processes:
                 if p.is_alive():
+                    self._logger.info(
+                        f"{self._unique_id} stopping process: {p._name}")
+
                     p.terminate()
                     p.join()
                 if hasattr(p, 'close'):
                     p.close()
 
+            self._logger.info(f"{self._unique_id} waiting for builder thread to finish.")
             #Wait for the file builder queue to finish.
             file_queue_build_thread.join()
 
