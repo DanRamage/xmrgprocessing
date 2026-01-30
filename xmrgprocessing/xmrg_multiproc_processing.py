@@ -358,7 +358,13 @@ class xmrg_processing_geopandas:
             file_queue_build_thread.start()
 
             rec_count = 0
-            while any([(checkJob is not None and checkJob.is_alive()) for checkJob in processes]):
+            #while any([(checkJob is not None and checkJob.is_alive()) for checkJob in processes]):
+            while True:
+                #if not results_queue.empty():
+                if not any(p.is_alive() for p in processes):
+                    self._logger.info(f"{self._unique_id} All processes done")
+                    break
+
                 try:
                     self.process_result(results_queue.get())
                     rec_count += 1
@@ -368,7 +374,7 @@ class xmrg_processing_geopandas:
                     e
                 except ValueError as e:
                     self._logger.exception(e)
-                    process_output_queue = False
+                    break
 
 
         finally:
