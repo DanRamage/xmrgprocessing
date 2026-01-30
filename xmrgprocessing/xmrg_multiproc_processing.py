@@ -377,7 +377,7 @@ class xmrg_processing_geopandas:
                     break
 
 
-        finally:
+            #finally:
             # Wait for the process to finish.
             self._logger.info(f"{self._unique_id} waiting for {self._worker_process_count} processes to finish.")
             for p in processes:
@@ -406,8 +406,12 @@ class xmrg_processing_geopandas:
             results_queue.close()
             input_queue.close()
 
-        self._logger.info(f"{self._unique_id} Finished. Imported: {rec_count} records in: "
-                          f"{time.time() - start_import_files_time} seconds")
+
+            self._logger.info(f"{self._unique_id} Finished. Imported: {rec_count} records in: "
+                  f"{time.time() - start_import_files_time} seconds")
+        except Exception as e:
+            self._logger.exception(e)
+
 
         return
 
