@@ -2,7 +2,8 @@ import os
 import logging
 import sys
 import threading
-from multiprocessing import Process, Queue, current_process
+from asyncio import Event
+from multiprocessing import Process, Queue, current_process, Event
 import time
 from pathlib import Path
 from queue import Empty
@@ -75,183 +76,182 @@ def process_xmrg_file_geopandas(**kwargs):
     :return:
     '''
     ret_val = -1
+    finished_event = None
     try:
-        try:
-            processing_start_time = time.time()
+        processing_start_time = time.time()
 
-            gp_results = None
+        gp_results = None
 
-            xmrg_file_count = 1
-            logger = None
-            process_name = current_process().name
+        xmrg_file_count = 1
+        logger = None
+        process_name = current_process().name
 
-            #Each worker will get its own log file.
-            base_log_output_directory = kwargs.get('base_log_output_directory',
-                                                   'process_xmrg_file_geopandas.log')
-            log_output_filename = os.path.join(base_log_output_directory,
-                                               f"process_xmrg_file_geopandas-{process_name}.log")
-            error_log_output_filename = os.path.join(base_log_output_directory,
-                                               f"process_xmrg_file_geopandas_errors-{process_name}.log")
-            debug_dir = kwargs['debug_files_directory']
-            input_queue = kwargs['input_queue']
-            results_queue = kwargs['results_queue']
-            save_all_precip_vals = kwargs['save_all_precip_vals']
-            delete_source_file = kwargs['delete_source_file']
-            delete_compressed_source_file = kwargs['delete_compressed_source_file']
-            # A course bounding box that restricts us to our area of interest.
-            minLatLong = None
-            maxLatLong = None
-            if 'min_lat_lon' in kwargs and 'max_lat_lon' in kwargs:
-                minLatLong = LatLong(kwargs['min_lat_lon'][0], kwargs['min_lat_lon'][1])
-                maxLatLong = LatLong(kwargs['max_lat_lon'][0], kwargs['max_lat_lon'][1])
+        #Each worker will get its own log file.
+        base_log_output_directory = kwargs.get('base_log_output_directory',
+                                               'process_xmrg_file_geopandas.log')
+        log_output_filename = os.path.join(base_log_output_directory,
+                                           f"process_xmrg_file_geopandas-{process_name}.log")
+        error_log_output_filename = os.path.join(base_log_output_directory,
+                                           f"process_xmrg_file_geopandas_errors-{process_name}.log")
+        debug_dir = kwargs['debug_files_directory']
+        input_queue = kwargs['input_queue']
+        results_queue = kwargs['results_queue']
+        finished_event = kwargs['finished_event']
+        save_all_precip_vals = kwargs['save_all_precip_vals']
+        delete_source_file = kwargs['delete_source_file']
+        delete_compressed_source_file = kwargs['delete_compressed_source_file']
+        # A course bounding box that restricts us to our area of interest.
+        minLatLong = None
+        maxLatLong = None
+        if 'min_lat_lon' in kwargs and 'max_lat_lon' in kwargs:
+            minLatLong = LatLong(kwargs['min_lat_lon'][0], kwargs['min_lat_lon'][1])
+            maxLatLong = LatLong(kwargs['max_lat_lon'][0], kwargs['max_lat_lon'][1])
 
-            # Boundaries we are creating the weighted averages for.
-            boundaries = kwargs['boundaries']
+        # Boundaries we are creating the weighted averages for.
+        boundaries = kwargs['boundaries']
 
-            logger = logging.getLogger(process_name)
-            logger.setLevel(logging.DEBUG)
-            formatter = logging.Formatter("%(asctime)s,%(levelname)s,%(funcName)s,%(lineno)d,%(message)s")
-            #fh = logging.handlers.RotatingFileHandler(log_output_filename)
-            #error_fh = logging.handlers.RotatingFileHandler(error_log_output_filename)
-            ch = logging.StreamHandler()
-            #fh.setLevel(logging.DEBUG)
-            #error_fh.setLevel(logging.ERROR)
-            ch.setLevel(logging.DEBUG)
-            #fh.setFormatter(formatter)
-            ch.setFormatter(formatter)
-            #logger.addHandler(fh)
-            logger.addHandler(ch)
+        logger = logging.getLogger(process_name)
+        logger.setLevel(logging.DEBUG)
+        formatter = logging.Formatter("%(asctime)s,%(levelname)s,%(funcName)s,%(lineno)d,%(message)s")
+        #fh = logging.handlers.RotatingFileHandler(log_output_filename)
+        #error_fh = logging.handlers.RotatingFileHandler(error_log_output_filename)
+        ch = logging.StreamHandler()
+        #fh.setLevel(logging.DEBUG)
+        #error_fh.setLevel(logging.ERROR)
+        ch.setLevel(logging.DEBUG)
+        #fh.setFormatter(formatter)
+        ch.setFormatter(formatter)
+        #logger.addHandler(fh)
+        logger.addHandler(ch)
 
 
-            save_boundary_grid_cells = True
-            save_boundary_grids_one_pass = True
-            write_percentages_grids_one_pass = True
-            logger.info(f"{process_name} starting process_xmrg_file_geopandas.")
+        save_boundary_grid_cells = True
+        save_boundary_grids_one_pass = True
+        write_percentages_grids_one_pass = True
+        logger.info(f"{process_name} starting process_xmrg_file_geopandas.")
 
-            #sys.stdout.flush()
+        #sys.stdout.flush()
 
-        except Exception as e:
-            logger.error(f"{process_name} {e}")
-            #logger.exception(e)
+        # Build boundary dataframes
+        logger.info(f"{process_name} begin processing boundaries.")
+        boundary_frames = []
+        for boundary in boundaries:
+            logger.info(f"{process_name} adding boundary {boundary[0]}")
+            df = pd.DataFrame([[boundary[0], boundary[1]]], columns=['Name', 'Boundaries'])
+            boundary_df = gpd.GeoDataFrame(df, geometry=df.Boundaries)
+            boundary_df = boundary_df.drop(columns=['Boundaries'])
+            boundary_df.set_crs(epsg=4326, inplace=True)
+            try:
+                #Write out a geojson file we can use to visualize the boundaries if needed.
+                #Write it before we change the CRS to 3857.
+                boundaries_outfile = os.path.join(debug_dir,
+                                                  f"{boundary_df['Name'][0].replace(' ', '_')}_boundary.json")
+                if not os.path.exists(boundaries_outfile):
+                    boundary_df.to_file(boundaries_outfile, driver="GeoJSON")
+            except Exception as e:
+                logger.exception(e)
 
-        else:
-            # Build boundary dataframes
-            logger.info(f"{process_name} begin processing boundaries.")
-            boundary_frames = []
-            for boundary in boundaries:
-                logger.info(f"{process_name} adding boundary {boundary[0]}")
-                df = pd.DataFrame([[boundary[0], boundary[1]]], columns=['Name', 'Boundaries'])
-                boundary_df = gpd.GeoDataFrame(df, geometry=df.Boundaries)
-                boundary_df = boundary_df.drop(columns=['Boundaries'])
-                boundary_df.set_crs(epsg=4326, inplace=True)
+            #Convert to a projected CRS.
+            boundary_df.to_crs(epsg=3857, inplace=True)
+            boundary_frames.append(boundary_df)
+
+        tot_file_time_start = time.time()
+        logger.info(f"{process_name} begin processing queue.")
+        for xmrg_filename in iter(input_queue.get, 'STOP'):
+            logger.info(f"{process_name} processing file: {xmrg_filename}")
+
+            gpXmrg = geoXmrg(minLatLong, maxLatLong, 0.01)
+            try:
+                gpXmrg.openFile(xmrg_filename)
+            except Exception as e:
+                logger.exception(f"{process_name} Failed to open file: {xmrg_filename}. {e}")
+            else:
+
+                # This is the database insert datetime.
+                # Parse the filename to get the data time.
+                (directory, filetime) = os.path.split(gpXmrg.fileName)
+                xmrg_filename = filetime
+                (filetime, ext) = os.path.splitext(filetime)
+                filetime = get_collection_date_from_filename(filetime)
+
                 try:
-                    #Write out a geojson file we can use to visualize the boundaries if needed.
-                    #Write it before we change the CRS to 3857.
-                    boundaries_outfile = os.path.join(debug_dir,
-                                                      f"{boundary_df['Name'][0].replace(' ', '_')}_boundary.json")
-                    if not os.path.exists(boundaries_outfile):
-                        boundary_df.to_file(boundaries_outfile, driver="GeoJSON")
-                except Exception as e:
-                    logger.exception(e)
+                    if gpXmrg.readFileHeader():
+                        read_rows_start = time.time()
+                        gpXmrg.readAllRows()
+                        if logger:
+                            logger.info(f"{process_name}({time.time() - read_rows_start} secs)"
+                                        f" to read all rows in file: {xmrg_filename}")
 
-                #Convert to a projected CRS.
-                boundary_df.to_crs(epsg=3857, inplace=True)
-                boundary_frames.append(boundary_df)
+                        gp_results = xmrg_results()
+                        gp_results.datetime = filetime
 
-            tot_file_time_start = time.time()
-            logger.info(f"{process_name} begin processing queue.")
-            for xmrg_filename in iter(input_queue.get, 'STOP'):
-                logger.info(f"{process_name} processing file: {xmrg_filename}")
+                        for index, boundary_row in enumerate(boundary_frames):
+                            file_start_time = time.time()
+                            xmrg_projected = gpXmrg.geo_data_frame.to_crs(epsg=3857, inplace=False)
+                            overlayed = gpd.overlay(boundary_row, xmrg_projected, how="intersection",
+                                                    keep_geom_type=False)
 
-                gpXmrg = geoXmrg(minLatLong, maxLatLong, 0.01)
-                try:
-                    gpXmrg.openFile(xmrg_filename)
-                except Exception as e:
-                    logger.exception(f"{process_name} Failed to open file: {xmrg_filename}. {e}")
-                else:
+                            # Here we create our percentage column by applying the function in the map(). This applies to
+                            # each area.
+                            overlayed['percent'] = overlayed.area.map(
+                                lambda area: float(area) / float(boundary_row.area.iloc[0]))
+                            overlayed['weighted average'] = (overlayed['Precipitation']) * (overlayed['percent'])
 
-                    # This is the database insert datetime.
-                    # Parse the filename to get the data time.
-                    (directory, filetime) = os.path.split(gpXmrg.fileName)
-                    xmrg_filename = filetime
-                    (filetime, ext) = os.path.splitext(filetime)
-                    filetime = get_collection_date_from_filename(filetime)
+                            wghtd_avg_val = sum(overlayed['weighted average'])
+                            gp_results.add_boundary_result(boundary_row['Name'][0], 'weighted_average',
+                                                           wghtd_avg_val)
+                            logger.info(f"{process_name} File: {xmrg_filename} "
+                                        f"Processed boundary: {boundary_row.Name[0]} WgtdAvg: {wghtd_avg_val}"
+                                        f" in {time.time() - file_start_time} seconds.")
+                            xmrg_file_count += 1
 
-                    try:
-                        if gpXmrg.readFileHeader():
-                            read_rows_start = time.time()
-                            gpXmrg.readAllRows()
-                            if logger:
-                                logger.info(f"{process_name}({time.time() - read_rows_start} secs)"
-                                            f" to read all rows in file: {xmrg_filename}")
+                            if save_boundary_grid_cells or write_percentages_grids_one_pass:
+                                #We want EPSG 4326 for our output debug files.
+                                overlayed_4326 = overlayed.to_crs(epsg=4326, inplace=False)
+                                if save_boundary_grid_cells:
+                                    for ndx, row in overlayed_4326.iterrows():
+                                        gp_results.add_grid(row.Name, (row.geometry, row.Precipitation))
 
-                            gp_results = xmrg_results()
-                            gp_results.datetime = filetime
-
-                            for index, boundary_row in enumerate(boundary_frames):
-                                file_start_time = time.time()
-                                xmrg_projected = gpXmrg.geo_data_frame.to_crs(epsg=3857, inplace=False)
-                                overlayed = gpd.overlay(boundary_row, xmrg_projected, how="intersection",
-                                                        keep_geom_type=False)
-
-                                # Here we create our percentage column by applying the function in the map(). This applies to
-                                # each area.
-                                overlayed['percent'] = overlayed.area.map(
-                                    lambda area: float(area) / float(boundary_row.area.iloc[0]))
-                                overlayed['weighted average'] = (overlayed['Precipitation']) * (overlayed['percent'])
-
-                                wghtd_avg_val = sum(overlayed['weighted average'])
-                                gp_results.add_boundary_result(boundary_row['Name'][0], 'weighted_average',
-                                                               wghtd_avg_val)
-                                logger.info(f"{process_name} File: {xmrg_filename} "
-                                            f"Processed boundary: {boundary_row.Name[0]} WgtdAvg: {wghtd_avg_val}"
-                                            f" in {time.time() - file_start_time} seconds.")
-                                xmrg_file_count += 1
-
-                                if save_boundary_grid_cells or write_percentages_grids_one_pass:
-                                    #We want EPSG 4326 for our output debug files.
-                                    overlayed_4326 = overlayed.to_crs(epsg=4326, inplace=False)
-                                    if save_boundary_grid_cells:
-                                        for ndx, row in overlayed_4326.iterrows():
-                                            gp_results.add_grid(row.Name, (row.geometry, row.Precipitation))
-
-                                    if write_percentages_grids_one_pass:
-                                        try:
-                                            percentage_file = os.path.join(debug_dir,
-                                                f"{overlayed['Name'][0].replace(' ', '_')}_percentage.json")
-                                            if not os.path.exists(percentage_file):
-                                                overlayed_4326.to_file(percentage_file, driver="GeoJSON")
-                                            #Once we've written out each boundary, we can stop.
-                                            if index == len(boundary_frames) - 1:
-                                                write_percentages_grids_one_pass = False
-                                        except Exception as e:
-                                            logger.exception(e)
-                                if save_boundary_grids_one_pass:
+                                if write_percentages_grids_one_pass:
                                     try:
-                                        full_data_grid = os.path.join(debug_dir,
-                                                                      "%s_%s_fullgrid_.json" % (
-                                                                      filetime.replace(':', '_'),
-                                                                      boundary_row.Name[0].replace(' ', '_')))
-                                        gpXmrg._geo_data_frame.to_file(full_data_grid, driver="GeoJSON")
-                                        save_boundary_grids_one_pass = False
+                                        percentage_file = os.path.join(debug_dir,
+                                            f"{overlayed['Name'][0].replace(' ', '_')}_percentage.json")
+                                        if not os.path.exists(percentage_file):
+                                            overlayed_4326.to_file(percentage_file, driver="GeoJSON")
+                                        #Once we've written out each boundary, we can stop.
+                                        if index == len(boundary_frames) - 1:
+                                            write_percentages_grids_one_pass = False
                                     except Exception as e:
                                         logger.exception(e)
+                            if save_boundary_grids_one_pass:
+                                try:
+                                    full_data_grid = os.path.join(debug_dir,
+                                                                  "%s_%s_fullgrid_.json" % (
+                                                                  filetime.replace(':', '_'),
+                                                                  boundary_row.Name[0].replace(' ', '_')))
+                                    gpXmrg._geo_data_frame.to_file(full_data_grid, driver="GeoJSON")
+                                    save_boundary_grids_one_pass = False
+                                except Exception as e:
+                                    logger.exception(e)
 
-                            results_queue.put(gp_results)
-                            try:
-                                gpXmrg.cleanUp(delete_source_file, delete_compressed_source_file)
-                            except Exception as e:
-                                logger.exception(e)
-                        else:
-                            logger.error(f"{process_name} Failed to process file: {xmrg_filename}")
-                    except Exception as e:
-                        logger.exception(f"{process_name} Failed to process file: {xmrg_filename}. {e}")
-            logger.info(f"{process_name} process finished. Processed in: "
-                         f"{time.time() - processing_start_time} seconds")
+                        results_queue.put(gp_results)
+                        try:
+                            gpXmrg.cleanUp(delete_source_file, delete_compressed_source_file)
+                        except Exception as e:
+                            logger.exception(e)
+                    else:
+                        logger.error(f"{process_name} Failed to process file: {xmrg_filename}")
+                except Exception as e:
+                    logger.exception(f"{process_name} Failed to process file: {xmrg_filename}. {e}")
+
+        logger.info(f"{process_name} process finished. Processed in: "
+                     f"{time.time() - processing_start_time} seconds")
+        ret_val = 1
     except Exception as e:
         logger.error(f"{current_process().name} {e}")
-
-    return
+    if finished_event is not None:
+        finished_event.set()
+    return ret_val
 
 
 class xmrg_processing_geopandas:
@@ -339,9 +339,11 @@ class xmrg_processing_geopandas:
             processes = []
             #Create a multiprocessing Process() for each worker.
             for workerNum in range(self._worker_process_count ):
+                finished_processing = Event()
                 args = {
                     'input_queue': input_queue,
                     'results_queue': results_queue,
+                    'finished_event': finished_processing,
                     'min_lat_lon': self._min_latitude_longitude,
                     'max_lat_lon': self._max_latitude_longitude,
                     'save_all_precip_vals': self._save_all_precip_values,
