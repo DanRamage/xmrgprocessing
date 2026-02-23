@@ -74,6 +74,7 @@ def process_xmrg_file_geopandas(**kwargs):
     :param kwargs:
     :return:
     '''
+    ret_val = -1
     try:
         try:
             processing_start_time = time.time()
@@ -409,11 +410,13 @@ class xmrg_processing_geopandas:
 
             self._logger.info(f"{self._unique_id} Finished. Imported: {rec_count} records in: "
                   f"{time.time() - start_import_files_time} seconds")
+
+            ret_val = 1
         except Exception as e:
             self._logger.exception(e)
 
 
-        return
+        return ret_val
 
     def process_result(self, xmrg_results_data):
         if self._callback_function is not None:
