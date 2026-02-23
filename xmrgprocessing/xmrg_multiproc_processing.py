@@ -369,7 +369,7 @@ class xmrg_processing_geopandas:
                     break
 
                 try:
-                    self.process_result(results_queue.get())
+                    self.process_result(results_queue.get(block=False))
                     rec_count += 1
                     if (rec_count % 10) == 0:
                         self._logger.info(f"{self._unique_id} Processed {rec_count} results")
