@@ -181,12 +181,12 @@ class JSONBoundaryParser(BoundaryParser):
 
         boundaries_tuples = []
         try:
-            json_dataframe = gpd.read_file(filename, engine='fiona')
-            '''
+            json_dataframe = gpd.read_file(filename)
+
             for ndx, row in json_dataframe.iterrows():
                 bnd_json = geojson.loads(to_geojson(row['geometry']))
                 boundaries_tuples.append((row['Name'], bnd_json))
-            '''
+
         except Exception as e:
             self._logger.exception(e)
         return boundaries_tuples
