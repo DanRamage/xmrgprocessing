@@ -23,6 +23,10 @@ class xmrg_file_iterator:
 
         self._start_date = kwargs.get('start_date', None)
         self._end_date = kwargs.get('end_date', None)
+        #We can provide a date list to use instead of a start and end date range.
+        self._use_date_list = 'date_list' in kwargs
+        self._date_list = list(kwargs.get('date_list', []))
+
         self._current_iterate_date = self._start_date
 
     def __iter__(self):
@@ -30,12 +34,16 @@ class xmrg_file_iterator:
 
     def __next__(self):
         full_filepath = None
+        if self._use_date_list:
+            if not self._date_list:
+                raise StopIteration
+            self._current_iterate_date = self._date_list.pop(0)
         try:
             file_name = build_filename(self._current_iterate_date, "gz")
         except Exception as e:
             self._logger.exception(e)
         else:
-            if self._current_iterate_date < self._end_date:
+            if self._use_date_list or self._current_iterate_date < self._end_date:
                 if self._full_xmrg_path is None:
                     full_filepath = self.get_path(self._current_iterate_date,
                                                    file_name,
@@ -45,8 +53,9 @@ class xmrg_file_iterator:
                     full_filepath = os.path.join(self._full_xmrg_path, file_name)
             else:
                 raise StopIteration
-            #The data files are hourly, so increment are iterate date by an hour.
-            self._current_iterate_date += timedelta(hours=1)
+            if not self._use_date_list:
+                #The data files are hourly, so increment are iterate date by an hour.
+                self._current_iterate_date += timedelta(hours=1)
         return full_filepath
 
     def get_path(self, file_date, file_name, base_path, path_template):
@@ -74,4 +83,3 @@ class xmrg_file_iterator:
         self._start_date = kwargs['start_date']
         self._end_date = kwargs['end_date']
         self._current_iterate_date = self._start_date
-
