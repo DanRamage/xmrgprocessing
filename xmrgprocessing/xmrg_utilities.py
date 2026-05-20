@@ -3,6 +3,8 @@ import re
 from datetime import datetime, timedelta
 import time
 import logging.config
+
+import pytz
 from pandas import to_datetime as dt_parse
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -185,7 +187,7 @@ def list_web_directory(url: str) -> list[WebDirectoryFile]:
     for item in parser.files:
         try:
             if item["size"] is not None:
-                last_modified = dt_parse(item["last_modified"]).to_pydatetime()
+                last_modified = dt_parse(item["last_modified"]).to_pydatetime().astimezone(pytz.UTC)
                 listings.append(WebDirectoryFile(
                     file_name=item["file_name"],
                     last_modified=last_modified,
