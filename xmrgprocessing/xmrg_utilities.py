@@ -197,23 +197,7 @@ def list_web_directory(url: str) -> list[WebDirectoryFile]:
     return listings
 
 def get_latest_remote_file_info(remote_url: str):
-    response = requests.get(remote_url)
-    response.raise_for_status()
-
-    parser = WebDirectoryParser()
-    parser.feed(response.text)
-    parser.close()
-
-    file_nfo = None
+    listings = list_web_directory(remote_url)
     #The remote URL supports a listing and ordering for the web directory. So if we pass in the
     #parameters of ?C=M;O=D we shouldn't need to sort anything, the server will have done it.
-    item = parser.files[0]
-    if item["size"] is not None:
-        last_modified = dt_parse(item["last_modified"])
-        file_nfo = WebDirectoryFile(
-            file_name=item["file_name"],
-            last_modified=last_modified,
-            size=item["size"],
-            url=urljoin(remote_url, item["href"]),
-        )
-    return file_nfo
+    return listings[0]
