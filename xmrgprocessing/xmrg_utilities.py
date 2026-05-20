@@ -3,6 +3,10 @@ import re
 from datetime import datetime, timedelta
 import time
 import logging.config
+from pandas import to_datetime as dt_parse
+from dataclasses import dataclass
+from html.parser import HTMLParser
+from urllib.parse import urljoin
 import requests
 
 logger = logging.getLogger()
@@ -103,3 +107,113 @@ def download_files(file_list: str, destination_directory: str, download_url: str
     for file_name in file_list:
         downloaded_files.append(http_download_file(download_url, file_name, destination_directory))
     return downloaded_files
+
+
+@dataclass
+class WebDirectoryFile:
+    file_name: str
+    last_modified: str | None
+    size: str | None
+    url: str
+
+
+class WebDirectoryParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.files = []
+        self._current_href = None
+        self._current_name = []
+        self._current_tail = []
+        self._inside_link = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self._flush_current_file()
+            attrs = dict(attrs)
+            self._current_href = attrs.get("href")
+            self._current_name = []
+            self._current_tail = []
+            self._inside_link = True
+
+    def handle_endtag(self, tag):
+        if tag == "a":
+            self._inside_link = False
+
+    def handle_data(self, data):
+        if self._inside_link:
+            self._current_name.append(data)
+        elif self._current_href:
+            self._current_tail.append(data)
+
+    def close(self):
+        super().close()
+        self._flush_current_file()
+
+    def _flush_current_file(self):
+        if not self._current_href:
+            return
+
+        file_name = "".join(self._current_name).strip()
+        tail = " ".join("".join(self._current_tail).split())
+
+        if file_name not in ("../", "Parent Directory"):
+            parts = tail.split()
+            size = parts[-1] if parts else None
+            last_modified = " ".join(parts[:-1]) if len(parts) > 1 else None
+
+            self.files.append({
+                "file_name": file_name,
+                "href": self._current_href,
+                "last_modified": last_modified,
+                "size": size,
+            })
+
+        self._current_href = None
+        self._current_name = []
+        self._current_tail = []
+
+
+def list_web_directory(url: str) -> list[WebDirectoryFile]:
+    response = requests.get(url)
+    response.raise_for_status()
+
+    parser = WebDirectoryParser()
+    parser.feed(response.text)
+    parser.close()
+
+    listings = []
+    for item in parser.files:
+        try:
+            if item["size"] is not None:
+                last_modified = dt_parse(item["last_modified"])
+                listings.append(WebDirectoryFile(
+                    file_name=item["file_name"],
+                    last_modified=last_modified,
+                    size=item["size"],
+                    url=urljoin(url, item["href"]),
+                ))
+        except Exception as e:
+            e
+    return listings
+
+def get_latest_remote_file_info(remote_url: str):
+    response = requests.get(remote_url)
+    response.raise_for_status()
+
+    parser = WebDirectoryParser()
+    parser.feed(response.text)
+    parser.close()
+
+    file_nfo = None
+    #The remote URL supports a listing and ordering for the web directory. So if we pass in the
+    #parameters of ?C=M;O=D we shouldn't need to sort anything, the server will have done it.
+    item = parser.files[0]
+    if item["size"] is not None:
+        last_modified = dt_parse(item["last_modified"])
+        file_nfo = WebDirectoryFile(
+            file_name=item["file_name"],
+            last_modified=last_modified,
+            size=item["size"],
+            url=urljoin(remote_url, item["href"]),
+        )
+    return file_nfo
