@@ -200,6 +200,7 @@ def list_web_directory(url: str) -> list[WebDirectoryFile]:
 
 def get_latest_remote_file_info(remote_url: str):
     listings = list_web_directory(remote_url)
+    listings.sort(key=lambda x: x.file_name)
     #The remote URL supports a listing and ordering for the web directory. So if we pass in the
     #parameters of ?C=M;O=D we shouldn't need to sort anything, the server will have done it.
     return listings[0]

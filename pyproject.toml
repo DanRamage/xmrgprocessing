@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "xmrgprocessing"
-version = "0.13.03"
+version = "0.13.04"
 description = ""
 authors = ["DANRAMAGE <ChiefDan@gmail.com>"]
 readme = "README.md"
